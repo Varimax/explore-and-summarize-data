@@ -1,0 +1,208 @@
+TITLE by Dylan Schuyt
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk.
+# This prevents the code from displaying in the knitted HTML output.
+# You should set echo=FALSE for all code chunks in your file.
+
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+#wine <- read.csv('wineQualityReds.csv')
+#setwd('./Udacity/')
+
+#install.packages('ggplot2')
+#install.packages('plyr')
+#install.packages('tidyr')
+#install.packages('dplyr')
+library(ggplot2)
+library(gridExtra)
+library(plyr)
+library(tidyr)
+library(dplyr)
+```
+
+# Univariate Plots Section
+```{r echo=FALSE, Univariate_Plots}
+
+
+p1 <- ggplot(data = wine, aes(x = pH)) + geom_bar()
+p2 <- ggplot(data = wine, aes(x = fixed.acidity)) + geom_bar()
+p3 <- ggplot(data = wine, aes(x = volatile.acidity)) + geom_bar()
+p4 <- ggplot(data = wine, aes(x = citric.acid)) + geom_bar()
+p5 <- ggplot(data = wine, aes(x = chlorides)) + geom_bar()
+p6 <- ggplot(data = wine, aes(x = free.sulfur.dioxide)) + geom_bar()
+p7 <- ggplot(data = wine, aes(x = total.sulfur.dioxide)) + geom_bar()
+p8 <- ggplot(data = wine, aes(x = density)) + geom_bar()
+p9 <- ggplot(data = wine, aes(x = sulphates)) + geom_bar()
+p10 <- ggplot(data = wine, aes(x = alcohol)) + geom_bar()
+p11 <- ggplot(data = wine, aes(x = quality)) + geom_bar()
+p12 <- ggplot(data = wine, aes(x = residual.sugar)) + geom_bar()
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12)
+
+summary(wine)
+
+```
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+Very tidy dataset with only numerical variables, all of which floats with only the quality being integers. 
+
+From an initial glance it seems that pH, volatile acidity, density and sulphates are equally distributed where the rest of the features seem to be skewed towards the y axis. 
+
+### What is/are the main feature(s) of interest in your dataset?
+
+Based on the distributions in the summary it seems that volatile acidicty, citric acid, sulphates and alcohol hold large degrees of variance and could therefore have large parts to play in explaining the quality as assessed by the experts. Sugar and chlorides seem to be very concentrated around their main values with a few outliers. These could explain a few outliers in quality, but judging from the description of the datafile could also have to do with certain types of wine. For example sweet desert wines would have high sugar ratings but this would not detriment their quality. 
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+
+Intuitively we would assume that fixed acidity and volatile acidity (and maybe citric acid) would be very related and may have high underlying correlations, skewing any results if we would put them together in a model. The same goes for total sulfur dioxide and free sulfur dioxide.
+
+### Did you create any new variables from existing variables in the dataset?
+
+Upon testing the underlying correlations between the aforementioned features via the cor.test function we find that fixed acidity, citric acid and volatile acidity have high correlations. As does density with fixed acidity. Same goes for free sulfur dioxide with total sulfur dioxide. pH also shows high correlation with acidities - which in hindsight seems kind of obvious.
+
+Because of these high underlying correlations there is an extremely high risk of multicollinearity. As such we can decide to exclude them (and lose any explanatory power that they have), roll them up with a simple multifacation/division/addition/substraction which would solve the problem slightly but not as much as we can. To prevent any multicollinearity and at the same time maintain all the explanatory power in the variables we have opted to do a factor analysis. As we are only working with numerical variables we have chosen for a principal components analysis with a varimax rotation. Analyzing the eigen values produced we derive that 4 factors would be the optimal choice in terms of explanatory power and reduction of the variables. Running the correlation test again on the variable shows that the factors hold larger correlations with the independent variable and less with eachother - mission succeeded.
+
+
+```{r}
+#install.packages('psych')
+#install.packages('nFactors')
+#install.packages('GPArotation')
+library(nFactors)
+library(psych)
+library(GPArotation)
+
+principal.test <-principal(subset(wine,select=-c(X,quality)), nfactors = 4, residuals = FALSE,rotate="varimax",n.obs=NA, covar=FALSE,scores=TRUE,missing=FALSE,impute="median",oblique.scores=TRUE,method="regression")
+print(principal.test,cutoff=.3, sort=TRUE)
+
+ev <- eigen(cor(subset(wine,select=-c(X,quality))))
+ap <- parallel(subject=nrow(subset(wine,select=-c(X,quality))),var=ncol(subset(wine,select=-c(X,quality))),
+  rep=100,cent=.05)
+nS <- nScree(x=ev$values, aparallel=ap$eigen$qevpea)
+plotnScree(nS)
+
+wine.new <- wine$quality
+
+```
+
+
+
+```{r echo=FALSE}
+
+wine.new$scores <- principal.test$scores
+df <- unlist(wine.new$scores)
+df <- data.frame(df)
+wine$factor1 <- df$RC1
+wine$factor2 <- df$RC2
+wine$factor3 <- df$RC3
+wine$factor4 <- df$RC4
+
+fit <- lm(quality ~ factor1 + factor2 + factor3 + factor4, data = wine)
+summary(fit)
+
+wine$quality <- factor(wine$quality)
+wine$quality <- as.numeric(wine$quality)
+
+cor(subset(wine[c(13:17)]), use='all.obs')
+#cor(wine,use='all.obs')
+
+```
+
+The factors comprise as following:
+Factor1 - acidity - fixed.acidity, density, citric.acid, pH
+Factor2 - sulfur - free.sulfur.dioxide, total.sulfur.dioxide, residual.sugar
+Factor3 - alcohol - alcohol, volatile.acidity
+Factor4 - chemicals - chlorides, sulphates
+
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+
+
+# Bivariate Plots Section
+```{r echo=FALSE, Bivariate_Plots}
+
+biplot(principal.test)
+print(principal.test, digits=2,cutoff=.3,sort=TRUE)
+
+f1 <- ggplot(data = wine, aes(x=quality,y=factor1)) + geom_bar(stat='identity')
+f2 <- ggplot(data = wine, aes(x=quality,y=factor2)) + geom_bar(stat='identity')
+f3 <- ggplot(data = wine, aes(x=quality,y=factor3)) + geom_bar(stat='identity')
+f4 <- ggplot(data = wine, aes(x=quality,y=factor4)) + geom_bar(stat='identity')
+
+grid.arrange(f1,f2,f3,f4)
+```
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+
+Within the factors (as shown in the biplot) all of the distributions are now normal with the scatterplots showing equal trends for the underlying variables.
+
+On top of that, all of the factors have a high correlation with the independent variable - quality. The strongest being Factor1 (acidity) with a strong positive correlation - seemingly all the acidities with the exception of volatile acidity are increases in quality. Second was factor3 in which alcohol was highly positive and volatile acidity highly negative. Which is not unexpected as experts write: http://www.aromadictionary.com/articles/volatileacidity_article.html
+
+Interestingly, Factor 2 - sulfur, had a strong negative relation with quality, indicating that it apparently gives a really bad taste to the wine. Also - sugar was in this group, indicating that sweet wines are deemed of lesser quality overall. Which we found surprising as desert wines tend to be very sweet, but can be very high quality as well. (not that I am a fan though)
+
+
+# Multivariate Plots Section
+
+```{r echo=FALSE, Multivariate_Plots}
+
+fit <- lm(quality ~ factor1 + factor2 + factor3 + factor4, data = wine)
+summary(fit)
+plot(fit)
+
+```
+
+# Multivariate Analysis
+
+------
+
+Creating a basic Lineair regression model out of the factors and quality as a dependent variable reveals a Adjusted R Square of .3215, which I consider to be very satisfactory seeing as there is a large amount of subjectivity in judging the quality of wine. Additionally, we got that whilst making sure there is no multicollinearity in the system and didn't get false inflated numbers. On top of that everything is significant to a three * level. 
+
+In the plots of the residuals, the normal Q-Q plot and cook's distance are all within acceptable limits. Whether the model can be used to predict quality of wines purely on their chemical compounds remains to be seen as I am sure there are aspects of personal preference involved, maybe fashionable aspects as well (some years might favour more acidic wines for example), but to explain the variance in the existing dataset I am quite happy.
+
+------
+
+# Reflection
+
+This has been by FAAAAAR my favourite chapter in the Data Analyst Nanodegree, which may have been the cause of me going a little bit overboard on this assignment. Where as the other lessons were interesting to learn this was the part where I first saw everything coming together. 
+Through this assignment I have learned to see below the surface of a dataset and appreciate/investigate the unusual nuances. 
+
+
+
+#Appendix
+```{r echo=FALSE}
+
+wine$scores <- wine.new$scores
+wine.new$scores <- fit.pa$scores
+df <- unlist(wine.new$scores)
+df <- data.frame(df)
+wine$factor1 <- df$RC1
+wine$factor2 <- df$RC2
+wine$factor3 <- df$RC3
+wine$factor4 <- df$RC4
+
+wine$scores <- NULL
+
+df <- data.frame(matrix(unlist(wine.new),nrow=1599, byrow=T))
+
+fit <- lm(quality ~ factor1 + factor2 + factor3 + factor4, data = wine)
+summary(fit)
+
+fit.old <- lm(quality ~ alcohol + sulphates + volatile.acidity + citric.acid, data = wine)
+summary(fit.old)
+
+wine$quality <- factor(wine$quality)
+wine$quality <- as.numeric(wine$quality)
+
+```
+
